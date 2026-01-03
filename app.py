@@ -3,7 +3,7 @@ from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
-from forms import RegistrationForm, LoginForm
+from forms import RegistrationForm, LoginForm, CodingChallengeForm
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', '5791628bb0b13ce0c676dfde280ba245')
@@ -49,6 +49,48 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html', title='Register', form=form)
 
+@app.route("/challenge", methods=['GET', 'POST'])
+def challenge():
+    form = CodingChallengeForm()
+    feedback = []
+    passed = False
+    
+    if form.validate_on_submit():
+        user_code = form.code_submission.data
+        
+        # Rubric / Evaluation Logic
+        # Prompt: Create a list called 'numbers' with at least 3 integers. 
+        # Iterate over the list and calculate the sum, storing it in 'total_sum'.
+        
+        local_scope = {}
+        try:
+            # Basic keyword check
+            if 'for ' not in user_code and 'while ' not in user_code:
+                feedback.append("Coach: It looks like you aren't using a loop. Try using a 'for' loop to go through the list.")
+            
+            # Execution
+            exec(user_code, {}, local_scope)
+            
+            if 'numbers' not in local_scope:
+                feedback.append("Coach: We couldn't find a list named 'numbers'. Please define one, e.g., numbers = [1, 2, 3].")
+            elif not isinstance(local_scope['numbers'], list):
+                feedback.append("Coach: 'numbers' should be a list.")
+            else:
+                expected_sum = sum(local_scope['numbers'])
+                if 'total_sum' not in local_scope:
+                    feedback.append("Coach: Please store the final sum in a variable named 'total_sum'.")
+                elif local_scope['total_sum'] != expected_sum:
+                    feedback.append(f"Coach: The calculated sum was {local_scope['total_sum']}, but we expected {expected_sum}. Check your addition logic inside the loop.")
+                else:
+                    passed = True
+                    feedback.append("Success! You've correctly iterated over the list and found the sum.")
+                    
+        except Exception as e:
+            feedback.append(f"Coach: Your code caused an error: {e}. Check your syntax.")
+            
+    return render_template('challenge.html', title='Coding Challenge', form=form, feedback=feedback, passed=passed)
+
+
 @app.route("/login", methods=['GET', 'POST'])
 def login():
     if current_user.is_authenticated:
@@ -69,7 +111,7 @@ def logout():
     logout_user()
     return redirect(url_for('home'))
 
-1if __name__ == '__main__':
+if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(debug=True)

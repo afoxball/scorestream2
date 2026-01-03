@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="content-section">
+    <h1>Coding Challenge: Sum of a List</h1>
+    <p class="lead">
+        <strong>Prompt:</strong> Create a list called <code>numbers</code> containing at least 3 integers. 
+        Then, write a loop to iterate over this list and calculate the sum of all the numbers. 
+        Store the final result in a variable called <code>total_sum</code>.
+    </p>
+    <hr>
+    
+    {% if feedback %}
+        <div class="alert {% if passed %}alert-success{% else %}alert-warning{% endif %}">
+            <h4>Feedback:</h4>
+            <ul>
+                {% for msg in feedback %}
+                    <li>{{ msg }}</li>
+                {% endfor %}
+            </ul>
+            {% if not passed %}
+                <p><strong>Hint:</strong> Here is a structure you can follow:</p>
+<pre>
+numbers = [10, 20, 30]
+total_sum = 0
+for num in numbers:
+    # Add num to total_sum
+    total_sum = total_sum + num
+</pre>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    <form method="POST" action="">
+        {{ form.hidden_tag() }}
+        <fieldset class="form-group">
+            <legend class="border-bottom mb-4">Student Info</legend>
+            <div class="form-group">
+                {{ form.first_name.label(class="form-control-label") }}
+                {% if form.first_name.errors %}
+                    {{ form.first_name(class="form-control is-invalid") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.first_name.errors %}
+                            <span>{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.first_name(class="form-control") }}
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.last_name.label(class="form-control-label") }}
+                {% if form.last_name.errors %}
+                    {{ form.last_name(class="form-control is-invalid") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.last_name.errors %}
+                            <span>{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.last_name(class="form-control") }}
+                {% endif %}
+            </div>
+            <div class="form-group">
+                {{ form.class_period.label(class="form-control-label") }}
+                {% if form.class_period.errors %}
+                    {{ form.class_period(class="form-control is-invalid") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.class_period.errors %}
+                            <span>{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.class_period(class="form-control") }}
+                {% endif %}
+            </div>
+            
+            <div class="form-group mt-3">
+                {{ form.code_submission.label(class="form-control-label") }}
+                {% if form.code_submission.errors %}
+                    {{ form.code_submission(class="form-control is-invalid", rows="10", style="font-family: monospace;") }}
+                    <div class="invalid-feedback">
+                        {% for error in form.code_submission.errors %}
+                            <span>{{ error }}</span>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ form.code_submission(class="form-control", rows="10", style="font-family: monospace;") }}
+                {% endif %}
+            </div>
+        </fieldset>
+        <div class="form-group mt-3">
+            {{ form.submit(class="btn btn-primary") }}
+        </div>
+    </form>
+</div>
+{% endblock %}
