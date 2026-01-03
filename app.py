@@ -49,46 +49,88 @@ def register():
         return redirect(url_for('login'))
     return render_template('register.html', title='Register', form=form)
 
+CHALLENGES = {
+    1: {
+        'title': 'Sum of a List',
+        'description': "Create a list called 'numbers' with at least 3 integers. Iterate over the list and calculate the sum, storing it in 'total_sum'.",
+    },
+    2: {
+        'title': 'Find the Maximum',
+        'description': "Create a function called 'find_max' that takes a list of numbers as an argument and returns the largest number in that list. Then call your function with the list [10, 5, 20, 3] and store the result in a variable called 'max_val'.",
+    }
+}
+
 @app.route("/challenge", methods=['GET', 'POST'])
 def challenge():
+    challenge_id = request.args.get('id', 1, type=int)
+    current_challenge = CHALLENGES.get(challenge_id)
+    
+    if not current_challenge:
+        return redirect(url_for('challenge', id=1))
+
     form = CodingChallengeForm()
     feedback = []
     passed = False
     
     if form.validate_on_submit():
         user_code = form.code_submission.data
-        
-        # Rubric / Evaluation Logic
-        # Prompt: Create a list called 'numbers' with at least 3 integers. 
-        # Iterate over the list and calculate the sum, storing it in 'total_sum'.
-        
         local_scope = {}
+        
         try:
             # Basic keyword check
-            if 'for ' not in user_code and 'while ' not in user_code:
+            if challenge_id == 1 and ('for ' not in user_code and 'while ' not in user_code):
                 feedback.append("Coach: It looks like you aren't using a loop. Try using a 'for' loop to go through the list.")
             
             # Execution
             exec(user_code, {}, local_scope)
             
-            if 'numbers' not in local_scope:
-                feedback.append("Coach: We couldn't find a list named 'numbers'. Please define one, e.g., numbers = [1, 2, 3].")
-            elif not isinstance(local_scope['numbers'], list):
-                feedback.append("Coach: 'numbers' should be a list.")
-            else:
-                expected_sum = sum(local_scope['numbers'])
-                if 'total_sum' not in local_scope:
-                    feedback.append("Coach: Please store the final sum in a variable named 'total_sum'.")
-                elif local_scope['total_sum'] != expected_sum:
-                    feedback.append(f"Coach: The calculated sum was {local_scope['total_sum']}, but we expected {expected_sum}. Check your addition logic inside the loop.")
+            if challenge_id == 1:
+                if 'numbers' not in local_scope:
+                    feedback.append("Coach: We couldn't find a list named 'numbers'. Please define one, e.g., numbers = [1, 2, 3].")
+                elif not isinstance(local_scope['numbers'], list):
+                    feedback.append("Coach: 'numbers' should be a list.")
                 else:
-                    passed = True
-                    feedback.append("Success! You've correctly iterated over the list and found the sum.")
-                    
+                    expected_sum = sum(local_scope['numbers'])
+                    if 'total_sum' not in local_scope:
+                        feedback.append("Coach: Please store the final sum in a variable named 'total_sum'.")
+                    elif local_scope['total_sum'] != expected_sum:
+                        feedback.append(f"Coach: The calculated sum was {local_scope['total_sum']}, but we expected {expected_sum}. Check your addition logic inside the loop.")
+                    else:
+                        passed = True
+                        feedback.append("Success! You've correctly iterated over the list and found the sum.")
+            
+            elif challenge_id == 2:
+                if 'find_max' not in local_scope or not callable(local_scope['find_max']):
+                    feedback.append("Coach: Please define a function named 'find_max'.")
+                elif 'max_val' not in local_scope:
+                    feedback.append("Coach: Please call your function and store the result in 'max_val'.")
+                else:
+                    # Verify max_val for the specific list requested
+                    if local_scope['max_val'] != 20:
+                         feedback.append("Coach: 'max_val' should be 20 for the list [10, 5, 20, 3]. Check your function call or logic.")
+                    else:
+                        # Test with another case to ensure it's not hardcoded
+                        try:
+                            test_res = local_scope['find_max']([1, 100, -5])
+                            if test_res == 100:
+                                passed = True
+                                feedback.append("Success! Your function works correctly.")
+                            else:
+                                feedback.append("Coach: Your function didn't return the correct maximum for a test case [1, 100, -5].")
+                        except Exception as e:
+                            feedback.append(f"Coach: Error testing your function: {e}")
+
         except Exception as e:
             feedback.append(f"Coach: Your code caused an error: {e}. Check your syntax.")
             
-    return render_template('challenge.html', title='Coding Challenge', form=form, feedback=feedback, passed=passed)
+    return render_template('challenge.html', 
+                           title=current_challenge['title'], 
+                           description=current_challenge['description'],
+                           form=form, 
+                           feedback=feedback, 
+                           passed=passed,
+                           challenge_id=challenge_id,
+                           next_challenge_id=challenge_id + 1 if challenge_id < len(CHALLENGES) else None)
 
 
 @app.route("/login", methods=['GET', 'POST'])
