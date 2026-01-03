@@ -61,6 +61,14 @@ CHALLENGES = {
     3: {
         'title': 'Sum of Even Numbers',
         'description': "Create a function called 'sum_evens' that takes a list of numbers. It should return the sum of only the even numbers in the list. Then call your function with the list [1, 2, 3, 4, 5, 6] and store the result in a variable called 'even_total'.",
+    },
+    4: {
+        'title': 'Count Vowels',
+        'description': "Create a function called 'count_vowels' that takes a string as an argument and returns the number of vowels (a, e, i, o, u) in that string. Then call your function with the string 'hello world' and store the result in a variable called 'vowel_count'.",
+    },
+    5: {
+        'title': 'Reverse String',
+        'description': "Create a function called 'reverse_string' that takes a string as an argument and returns the string reversed. Then call your function with the string 'python' and store the result in a variable called 'reversed_str'.",
     }
 }
 
@@ -140,6 +148,44 @@ def challenge():
                                 feedback.append("Success! Your function correctly sums even numbers.")
                             else:
                                 feedback.append("Coach: Your function didn't return the correct sum for [10, 11, 12]. Expected 22.")
+                        except Exception as e:
+                            feedback.append(f"Coach: Error testing your function: {e}")
+
+            elif challenge_id == 4:
+                if 'count_vowels' not in local_scope or not callable(local_scope['count_vowels']):
+                    feedback.append("Coach: Please define a function named 'count_vowels'.")
+                elif 'vowel_count' not in local_scope:
+                    feedback.append("Coach: Please call your function and store the result in 'vowel_count'.")
+                else:
+                    if local_scope['vowel_count'] != 3:
+                         feedback.append("Coach: 'vowel_count' should be 3 for 'hello world'. Check your logic.")
+                    else:
+                        try:
+                            test_res = local_scope['count_vowels']("aeiou")
+                            if test_res == 5:
+                                passed = True
+                                feedback.append("Success! Your function correctly counts vowels.")
+                            else:
+                                feedback.append("Coach: Your function didn't return the correct count for 'aeiou'. Expected 5.")
+                        except Exception as e:
+                            feedback.append(f"Coach: Error testing your function: {e}")
+
+            elif challenge_id == 5:
+                if 'reverse_string' not in local_scope or not callable(local_scope['reverse_string']):
+                    feedback.append("Coach: Please define a function named 'reverse_string'.")
+                elif 'reversed_str' not in local_scope:
+                    feedback.append("Coach: Please call your function and store the result in 'reversed_str'.")
+                else:
+                    if local_scope['reversed_str'] != 'nohtyp':
+                         feedback.append("Coach: 'reversed_str' should be 'nohtyp' for 'python'. Check your logic.")
+                    else:
+                        try:
+                            test_res = local_scope['reverse_string']("abc")
+                            if test_res == "cba":
+                                passed = True
+                                feedback.append("Success! Your function correctly reverses strings.")
+                            else:
+                                feedback.append("Coach: Your function didn't return the correct reverse for 'abc'. Expected 'cba'.")
                         except Exception as e:
                             feedback.append(f"Coach: Error testing your function: {e}")
 
