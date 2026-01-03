@@ -57,6 +57,10 @@ CHALLENGES = {
     2: {
         'title': 'Find the Maximum',
         'description': "Create a function called 'find_max' that takes a list of numbers as an argument and returns the largest number in that list. Then call your function with the list [10, 5, 20, 3] and store the result in a variable called 'max_val'.",
+    },
+    3: {
+        'title': 'Sum of Even Numbers',
+        'description': "Create a function called 'sum_evens' that takes a list of numbers. It should return the sum of only the even numbers in the list. Then call your function with the list [1, 2, 3, 4, 5, 6] and store the result in a variable called 'even_total'.",
     }
 }
 
@@ -117,6 +121,25 @@ def challenge():
                                 feedback.append("Success! Your function works correctly.")
                             else:
                                 feedback.append("Coach: Your function didn't return the correct maximum for a test case [1, 100, -5].")
+                        except Exception as e:
+                            feedback.append(f"Coach: Error testing your function: {e}")
+
+            elif challenge_id == 3:
+                if 'sum_evens' not in local_scope or not callable(local_scope['sum_evens']):
+                    feedback.append("Coach: Please define a function named 'sum_evens'.")
+                elif 'even_total' not in local_scope:
+                    feedback.append("Coach: Please call your function and store the result in 'even_total'.")
+                else:
+                    if local_scope['even_total'] != 12:
+                         feedback.append("Coach: 'even_total' should be 12 for the list [1, 2, 3, 4, 5, 6]. Check your logic.")
+                    else:
+                        try:
+                            test_res = local_scope['sum_evens']([10, 11, 12])
+                            if test_res == 22:
+                                passed = True
+                                feedback.append("Success! Your function correctly sums even numbers.")
+                            else:
+                                feedback.append("Coach: Your function didn't return the correct sum for [10, 11, 12]. Expected 22.")
                         except Exception as e:
                             feedback.append(f"Coach: Error testing your function: {e}")
 
