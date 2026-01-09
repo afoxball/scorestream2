@@ -100,6 +100,7 @@ def challenge():
     passed = False
     
     if form.validate_on_submit():
+        print("Form validated. Processing submission...")
         user_code = form.code_submission.data
         
         if client:
@@ -139,9 +140,14 @@ Do not wrap the JSON in Markdown delimiters.
                 feedback.append(result.get('feedback', 'No feedback provided.'))
                 
             except Exception as e:
+                print(f"Error during AI grading: {e}")
                 feedback.append(f"AI Grading Error: {str(e)}")
         else:
+             print("Client not configured.")
              feedback.append("AI Grading is not configured. Please set GOOGLE_API_KEY.")
+    else:
+        if request.method == 'POST':
+            print(f"Form validation failed: {form.errors}")
             
     return render_template('challenge.html', 
                            title=current_challenge['title'], 

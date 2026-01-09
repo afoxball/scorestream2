@@ -140,7 +140,24 @@
                 indentUnit: 4
             });
             editor.setSize(null, 400); // Set width to auto and height to 400px
+
+            // Ensure the textarea is updated whenever the editor content changes
+            editor.on('change', function(cm) {
+                cm.save();
+            });
         }
     });
+
+    // Add loading state on form submit
+    var form = document.querySelector('form');
+    if (form) {
+        form.addEventListener('submit', function() {
+            var submitBtn = form.querySelector('input[type="submit"]');
+            if (submitBtn) {
+                submitBtn.value = "Evaluating... Please Wait...";
+                submitBtn.disabled = true;
+            }
+        });
+    }
 </script>
 {% endblock %}
