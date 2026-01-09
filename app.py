@@ -1,6 +1,6 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -13,10 +13,9 @@ app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', '5791628bb0b13ce0c676dfd
 # Gemini Configuration
 GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
 if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
+    client = genai.Client(api_key=GOOGLE_API_KEY)
 else:
-    model = None
+    client = None
     print("Warning: GOOGLE_API_KEY not set. Gemini features will not work.")
 
 # Database configuration
@@ -103,7 +102,7 @@ def challenge():
     if form.validate_on_submit():
         user_code = form.code_submission.data
         
-        if model:
+        if client:
             # Use Gemini for grading
             prompt = f"""
 You are a Python coding tutor.
@@ -121,7 +120,10 @@ Return a valid JSON object with exactly these two keys:
 Do not wrap the JSON in Markdown delimiters.
 """
             try:
-                response = model.generate_content(prompt)
+                response = client.models.generate_content(
+                    model='gemini-2.0-flash',
+                    contents=prompt
+                )
                 response_text = response.text.strip()
                 
                 # Clean up if markdown delimiters are present
