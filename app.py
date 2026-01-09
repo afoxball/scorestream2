@@ -1,4 +1,6 @@
 import os
+import json
+import google.generativeai as genai
 from flask import Flask, render_template, redirect, url_for, flash, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -7,6 +9,15 @@ from forms import RegistrationForm, LoginForm, CodingChallengeForm
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', '5791628bb0b13ce0c676dfde280ba245')
+
+# Gemini Configuration
+GOOGLE_API_KEY = os.environ.get('GOOGLE_API_KEY')
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+    model = genai.GenerativeModel('gemini-pro')
+else:
+    model = None
+    print("Warning: GOOGLE_API_KEY not set. Gemini features will not work.")
 
 # Database configuration
 db_uri = os.environ.get('DATABASE_URL', 'postgresql://username:password@localhost:5432/scorestream_db')
@@ -53,22 +64,27 @@ CHALLENGES = {
     1: {
         'title': 'Sum of a List',
         'description': "Create a list called 'numbers' with at least 3 integers. Iterate over the list and calculate the sum, storing it in 'total_sum'.",
+        'rubric': "1. 'numbers' list defined with >= 3 integers.\n2. Loop used for iteration.\n3. 'total_sum' variable contains the correct sum."
     },
     2: {
         'title': 'Find the Maximum',
         'description': "Create a function called 'find_max' that takes a list of numbers as an argument and returns the largest number in that list. Then call your function with the list [10, 5, 20, 3] and store the result in a variable called 'max_val'.",
+        'rubric': "1. Function 'find_max' defined.\n2. 'find_max' returns max of input list.\n3. Function called with [10, 5, 20, 3].\n4. 'max_val' stores the result 20."
     },
     3: {
         'title': 'Sum of Even Numbers',
         'description': "Create a function called 'sum_evens' that takes a list of numbers. It should return the sum of only the even numbers in the list. Then call your function with the list [1, 2, 3, 4, 5, 6] and store the result in a variable called 'even_total'.",
+        'rubric': "1. Function 'sum_evens' defined.\n2. 'sum_evens' returns sum of even numbers only.\n3. Function called with [1, 2, 3, 4, 5, 6].\n4. 'even_total' stores the result 12."
     },
     4: {
         'title': 'Count Vowels',
         'description': "Create a function called 'count_vowels' that takes a string as an argument and returns the number of vowels (a, e, i, o, u) in that string. Then call your function with the string 'hello world' and store the result in a variable called 'vowel_count'.",
+        'rubric': "1. Function 'count_vowels' defined.\n2. 'count_vowels' returns count of vowels (case-insensitive).\n3. Function called with 'hello world'.\n4. 'vowel_count' stores the result 3."
     },
     5: {
         'title': 'Reverse String',
         'description': "Create a function called 'reverse_string' that takes a string as an argument and returns the string reversed. Then call your function with the string 'python' and store the result in a variable called 'reversed_str'.",
+        'rubric': "1. Function 'reverse_string' defined.\n2. 'reverse_string' returns reversed string.\n3. Function called with 'python'.\n4. 'reversed_str' stores the result 'nohtyp'."
     }
 }
 
@@ -86,111 +102,44 @@ def challenge():
     
     if form.validate_on_submit():
         user_code = form.code_submission.data
-        local_scope = {}
         
-        try:
-            # Basic keyword check
-            if challenge_id == 1 and ('for ' not in user_code and 'while ' not in user_code):
-                feedback.append("Coach: It looks like you aren't using a loop. Try using a 'for' loop to go through the list.")
-            
-            # Execution
-            exec(user_code, {}, local_scope)
-            
-            if challenge_id == 1:
-                if 'numbers' not in local_scope:
-                    feedback.append("Coach: We couldn't find a list named 'numbers'. Please define one, e.g., numbers = [1, 2, 3].")
-                elif not isinstance(local_scope['numbers'], list):
-                    feedback.append("Coach: 'numbers' should be a list.")
-                else:
-                    expected_sum = sum(local_scope['numbers'])
-                    if 'total_sum' not in local_scope:
-                        feedback.append("Coach: Please store the final sum in a variable named 'total_sum'.")
-                    elif local_scope['total_sum'] != expected_sum:
-                        feedback.append(f"Coach: The calculated sum was {local_scope['total_sum']}, but we expected {expected_sum}. Check your addition logic inside the loop.")
-                    else:
-                        passed = True
-                        feedback.append("Success! You've correctly iterated over the list and found the sum.")
-            
-            elif challenge_id == 2:
-                if 'find_max' not in local_scope or not callable(local_scope['find_max']):
-                    feedback.append("Coach: Please define a function named 'find_max'.")
-                elif 'max_val' not in local_scope:
-                    feedback.append("Coach: Please call your function and store the result in 'max_val'.")
-                else:
-                    # Verify max_val for the specific list requested
-                    if local_scope['max_val'] != 20:
-                         feedback.append("Coach: 'max_val' should be 20 for the list [10, 5, 20, 3]. Check your function call or logic.")
-                    else:
-                        # Test with another case to ensure it's not hardcoded
-                        try:
-                            test_res = local_scope['find_max']([1, 100, -5])
-                            if test_res == 100:
-                                passed = True
-                                feedback.append("Success! Your function works correctly.")
-                            else:
-                                feedback.append("Coach: Your function didn't return the correct maximum for a test case [1, 100, -5].")
-                        except Exception as e:
-                            feedback.append(f"Coach: Error testing your function: {e}")
+        if model:
+            # Use Gemini for grading
+            prompt = f"""
+You are a Python coding tutor.
+Prompt: {current_challenge['description']}
+Rubric:
+{current_challenge['rubric']}
 
-            elif challenge_id == 3:
-                if 'sum_evens' not in local_scope or not callable(local_scope['sum_evens']):
-                    feedback.append("Coach: Please define a function named 'sum_evens'.")
-                elif 'even_total' not in local_scope:
-                    feedback.append("Coach: Please call your function and store the result in 'even_total'.")
-                else:
-                    if local_scope['even_total'] != 12:
-                         feedback.append("Coach: 'even_total' should be 12 for the list [1, 2, 3, 4, 5, 6]. Check your logic.")
-                    else:
-                        try:
-                            test_res = local_scope['sum_evens']([10, 11, 12])
-                            if test_res == 22:
-                                passed = True
-                                feedback.append("Success! Your function correctly sums even numbers.")
-                            else:
-                                feedback.append("Coach: Your function didn't return the correct sum for [10, 11, 12]. Expected 22.")
-                        except Exception as e:
-                            feedback.append(f"Coach: Error testing your function: {e}")
+Student Code:
+{user_code}
 
-            elif challenge_id == 4:
-                if 'count_vowels' not in local_scope or not callable(local_scope['count_vowels']):
-                    feedback.append("Coach: Please define a function named 'count_vowels'.")
-                elif 'vowel_count' not in local_scope:
-                    feedback.append("Coach: Please call your function and store the result in 'vowel_count'.")
-                else:
-                    if local_scope['vowel_count'] != 3:
-                         feedback.append("Coach: 'vowel_count' should be 3 for 'hello world'. Check your logic.")
-                    else:
-                        try:
-                            test_res = local_scope['count_vowels']("aeiou")
-                            if test_res == 5:
-                                passed = True
-                                feedback.append("Success! Your function correctly counts vowels.")
-                            else:
-                                feedback.append("Coach: Your function didn't return the correct count for 'aeiou'. Expected 5.")
-                        except Exception as e:
-                            feedback.append(f"Coach: Error testing your function: {e}")
-
-            elif challenge_id == 5:
-                if 'reverse_string' not in local_scope or not callable(local_scope['reverse_string']):
-                    feedback.append("Coach: Please define a function named 'reverse_string'.")
-                elif 'reversed_str' not in local_scope:
-                    feedback.append("Coach: Please call your function and store the result in 'reversed_str'.")
-                else:
-                    if local_scope['reversed_str'] != 'nohtyp':
-                         feedback.append("Coach: 'reversed_str' should be 'nohtyp' for 'python'. Check your logic.")
-                    else:
-                        try:
-                            test_res = local_scope['reverse_string']("abc")
-                            if test_res == "cba":
-                                passed = True
-                                feedback.append("Success! Your function correctly reverses strings.")
-                            else:
-                                feedback.append("Coach: Your function didn't return the correct reverse for 'abc'. Expected 'cba'.")
-                        except Exception as e:
-                            feedback.append(f"Coach: Error testing your function: {e}")
-
-        except Exception as e:
-            feedback.append(f"Coach: Your code caused an error: {e}. Check your syntax.")
+Evaluate the student code based on the rubric.
+Return a valid JSON object with exactly these two keys:
+- "passed": boolean (true if all rubric items are met, false otherwise)
+- "feedback": string (constructive feedback explaining what is wrong or congratulating if correct. Keep it under 3 sentences.)
+Do not wrap the JSON in Markdown delimiters.
+"""
+            try:
+                response = model.generate_content(prompt)
+                response_text = response.text.strip()
+                
+                # Clean up if markdown delimiters are present
+                if response_text.startswith("```json"):
+                    response_text = response_text[7:]
+                if response_text.startswith("```"):
+                     response_text = response_text[3:]
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]
+                    
+                result = json.loads(response_text)
+                passed = result.get('passed', False)
+                feedback.append(result.get('feedback', 'No feedback provided.'))
+                
+            except Exception as e:
+                feedback.append(f"AI Grading Error: {str(e)}")
+        else:
+             feedback.append("AI Grading is not configured. Please set GOOGLE_API_KEY.")
             
     return render_template('challenge.html', 
                            title=current_challenge['title'], 

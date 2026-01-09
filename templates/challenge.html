@@ -1,4 +1,20 @@
 {% extends "base.html" %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/python/python.min.js"></script>
+<style>
+    .CodeMirror {
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        height: auto;
+        min-height: 300px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="content-section">
     <h1>Coding Challenge: {{ title }}</h1>
@@ -112,4 +128,19 @@
         </form>
     {% endif %}
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var textarea = document.getElementById("code_submission");
+        if (textarea) {
+            var editor = CodeMirror.fromTextArea(textarea, {
+                lineNumbers: true,
+                mode: "python",
+                theme: "dracula",
+                indentUnit: 4
+            });
+            editor.setSize(null, 400); // Set width to auto and height to 400px
+        }
+    });
+</script>
 {% endblock %}
