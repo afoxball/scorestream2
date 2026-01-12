@@ -1,5 +1,6 @@
 import os
 import json
+import click
 from datetime import datetime, timezone
 from google import genai
 from flask import Flask, render_template, redirect, url_for, flash, request, session
@@ -24,6 +25,7 @@ db_uri = os.environ.get('DATABASE_URL', 'postgresql://username:password@localhos
 if db_uri and db_uri.startswith("postgres://"):
     db_uri = db_uri.replace("postgres://", "postgresql://", 1)
 app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
@@ -34,6 +36,7 @@ class User(db.Model, UserMixin):
     username = db.Column(db.String(20), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='student')
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime)
     
@@ -45,16 +48,16 @@ class User(db.Model, UserMixin):
     def __repr__(self):
         return f"User('{self.username}', '{self.email}')"
 
-    def get_stats(self):
-     before_request
-def track_page_visit():
-    if current_user.is_authenticated and request.endpoint and 'static' not in request.endpoint:
-        visit = PageVisit(user_id=current_user.id, path=request.path)
-        db.session.add(visit)
-        # Commit might be too heavy for every request, but for this scale it ensures accuracy
-        db.session.commit()
+    @property
+    def is_admin(self):
+        return self.role == 'admin' or self.role == 'superuser'
+        
+    @property
+    def is_teacher(self):
+        return self.role == 'teacher' or self.role == 'admin' or self.role == 'superuser'
 
-@app.   total_submissions = Submission.query.filter_by(user_id=self.id).count()
+    def get_stats(self):
+        total_submissions = Submission.query.filter_by(user_id=self.id).count()
         passed_submissions = Submission.query.filter_by(user_id=self.id, passed=True).count()
         percent_correct = (passed_submissions / total_submissions * 100) if total_submissions > 0 else 0
         
@@ -96,14 +99,24 @@ class PageVisit(db.Model):
     path = db.Column(db.String(255), nullable=False)
     timestamp = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
 
-
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+@app.before_request
+def track_page_visit():
+    if current_user.is_authenticated and request.endpoint and 'static' not in request.endpoint:
+        visit = PageVisit(user_id=current_user.id, path=request.path)
+        db.session.add(visit)
+        # Commit might be too heavy for every request, but for this scale it ensures accuracy
+        try:
+            db.session.commit()
+        except:
+            db.session.rollback()
+
 @app.route('/')
 def home():
-    return render_template('index.html'), method='scrypt'
+    return render_template('index.html')
 
 @app.route("/register", methods=['GET', 'POST'])
 def register():
@@ -111,7 +124,8 @@ def register():
         return redirect(url_for('home'))
     form = RegistrationForm()
     if form.validate_on_submit():
-        hashed_password = generate_password_hash(form.password.data)
+        hashed_password = generate_password_hash(form.password.data, method='scrypt')
+        # Default role is 'student' handled by database default
         user = User(username=form.username.data, email=form.email.data, password=hashed_password)
         db.session.add(user)
         db.session.commit()
@@ -160,7 +174,6 @@ def challenge():
     passed = False
     
     if form.validate_on_submit():
-        print("Form validated. Processing submission...")
         user_code = form.code_submission.data
         
         if client:
@@ -189,7 +202,15 @@ Do not wrap the JSON in Markdown delimiters.
                 
                 # Clean up if markdown delimiters are present
                 if response_text.startswith("```json"):
-                    resp_text = result.get('feedback', 'No feedback provided.')
+                    response_text = response_text[7:]
+                if response_text.startswith("```"):
+                     response_text = response_text[3:]
+                if response_text.endswith("```"):
+                    response_text = response_text[:-3]
+                    
+                result = json.loads(response_text)
+                passed = result.get('passed', False)
+                feedback_text = result.get('feedback', 'No feedback provided.')
                 feedback.append(feedback_text)
                 
                 # Save submission
@@ -202,15 +223,7 @@ Do not wrap the JSON in Markdown delimiters.
                         feedback=str(feedback_text)
                     )
                     db.session.add(submission)
-                    db.session.commit(
-                if response_text.startswith("```"):
-                     response_text = response_text[3:]
-                if response_text.endswith("```"):
-                    response_text = response_text[:-3]
-                    
-                result = json.loads(response_text)
-                passed = result.get('passed', False)
-                feedback.append(result.get('feedback', 'No feedback provided.'))
+                    db.session.commit()
                 
             except Exception as e:
                 print(f"Error during AI grading: {e}")
@@ -218,8 +231,26 @@ Do not wrap the JSON in Markdown delimiters.
         else:
              print("Client not configured.")
              feedback.append("AI Grading is not configured. Please set GOOGLE_API_KEY.")
-    else:
-        if request.method == 'POST':
+            
+    return render_template('challenge.html', 
+                           title=current_challenge['title'], 
+                           description=current_challenge['description'],
+                           form=form, 
+                           feedback=feedback, 
+                           passed=passed,
+                           challenge_id=challenge_id,
+                           next_challenge_id=challenge_id + 1 if challenge_id < len(CHALLENGES) else None)
+
+
+@app.route("/login", methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('home'))
+    form = LoginForm()
+    if form.validate_on_submit():
+        user = User.query.filter_by(email=form.email.data).first()
+        if user and check_password_hash(user.password, form.password.data):
+            login_user(user)
             
             # Track login
             user.last_login = datetime.now(timezone.utc)
@@ -245,30 +276,46 @@ def logout():
         if user_session:
             user_session.logout_time = datetime.now(timezone.utc)
             db.session.commit()
-                          passed=passed,
-                           challenge_id=challenge_id,
-                           next_challenge_id=challenge_id + 1 if challenge_id < len(CHALLENGES) else None)
-
-
-@app.route("/login", methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('home'))
-    form = LoginForm()
-    if form.validate_on_submit():
-        user = User.query.filter_by(email=form.email.data).first()
-        if user and check_password_hash(user.password, form.password.data):
-            login_user(user)
-            next_page = request.args.get('next')
-            return redirect(next_page) if next_page else redirect(url_for('home'))
-        else:
-            flash('Login Unsuccessful. Please check email and password', 'danger')
-    return render_template('login.html', title='Login', form=form)
-
-@app.route("/logout")
-def logout():
+            
     logout_user()
     return redirect(url_for('home'))
+
+# CLI Commands for User Management
+
+@app.cli.command("promote-user")
+@click.argument("email")
+@click.argument("role")
+def promote_user(email, role):
+    """Promote a user to a specific role (admin, teacher, student)."""
+    valid_roles = ['student', 'teacher', 'admin', 'superuser']
+    if role not in valid_roles:
+        print(f"Error: Role must be one of {valid_roles}")
+        return
+
+    user = User.query.filter_by(email=email).first()
+    if user:
+        user.role = role
+        db.session.commit()
+        print(f"Success: User {email} has been promoted to {role}.")
+    else:
+        print(f"Error: User with email {email} not found.")
+
+@app.cli.command("init-admin")
+@click.argument("username")
+@click.argument("email")
+@click.argument("password")
+def init_admin(username, email, password):
+    """Create a new superuser directly from CLI."""
+    user = User.query.filter_by(email=email).first()
+    if user:
+        print(f"Error: User with email {email} already exists.")
+        return
+    
+    hashed_password = generate_password_hash(password, method='scrypt')
+    user = User(username=username, email=email, password=hashed_password, role='superuser')
+    db.session.add(user)
+    db.session.commit()
+    print(f"Success: Superuser {username} ({email}) created.")
 
 if __name__ == '__main__':
     with app.app_context():
