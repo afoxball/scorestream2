@@ -282,6 +282,12 @@ def logout():
 
 # CLI Commands for User Management
 
+@app.cli.command("init-db")
+def init_db():
+    """Create database tables."""
+    db.create_all()
+    print("Database tables created successfully.")
+
 @app.cli.command("promote-user")
 @click.argument("email")
 @click.argument("role")
