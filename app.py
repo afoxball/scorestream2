@@ -1,7 +1,8 @@
 import os
 import json
+from datetime import datetime, timezone
 from google import genai
-from flask import Flask, render_template, redirect, url_for, flash, request
+from flask import Flask, render_template, redirect, url_for, flash, request, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -32,10 +33,69 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(60), nullable=False)
+    password = db.Column(db.String(255), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    last_login = db.Column(db.DateTime)
+    
+    # Relationships for tracking
+    submissions = db.relationship('Submission', backref='author', lazy=True)
+    sessions = db.relationship('UserSession', backref='user', lazy=True)
+    page_visits = db.relationship('PageVisit', backref='visitor', lazy=True)
 
     def __repr__(self):
         return f"User('{self.username}', '{self.email}')"
+
+    def get_stats(self):
+     before_request
+def track_page_visit():
+    if current_user.is_authenticated and request.endpoint and 'static' not in request.endpoint:
+        visit = PageVisit(user_id=current_user.id, path=request.path)
+        db.session.add(visit)
+        # Commit might be too heavy for every request, but for this scale it ensures accuracy
+        db.session.commit()
+
+@app.   total_submissions = Submission.query.filter_by(user_id=self.id).count()
+        passed_submissions = Submission.query.filter_by(user_id=self.id, passed=True).count()
+        percent_correct = (passed_submissions / total_submissions * 100) if total_submissions > 0 else 0
+        
+        # Calculate time on site (sum of closed session durations)
+        total_duration_seconds = 0
+        closed_sessions = UserSession.query.filter(UserSession.user_id==self.id, UserSession.logout_time != None).all()
+        for s in closed_sessions:
+            if s.logout_time and s.login_time:
+                total_duration_seconds += (s.logout_time - s.login_time).total_seconds()
+        
+        minutes_on_site = round(total_duration_seconds / 60, 2)
+
+        return {
+            'total_submissions': total_submissions,
+            'passed_submissions': passed_submissions,
+            'percent_correct': round(percent_correct, 1),
+            'minutes_on_site': minutes_on_site
+        }
+
+class Submission(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    challenge_id = db.Column(db.Integer, nullable=False)
+    code = db.Column(db.Text, nullable=False)
+    passed = db.Column(db.Boolean, default=False)
+    feedback = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+class UserSession(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    login_time = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    logout_time = db.Column(db.DateTime)
+    ip_address = db.Column(db.String(45))
+
+class PageVisit(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    path = db.Column(db.String(255), nullable=False)
+    timestamp = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -43,7 +103,7 @@ def load_user(user_id):
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    return render_template('index.html'), method='scrypt'
 
 @app.route("/register", methods=['GET', 'POST'])
 def register():
@@ -129,7 +189,20 @@ Do not wrap the JSON in Markdown delimiters.
                 
                 # Clean up if markdown delimiters are present
                 if response_text.startswith("```json"):
-                    response_text = response_text[7:]
+                    resp_text = result.get('feedback', 'No feedback provided.')
+                feedback.append(feedback_text)
+                
+                # Save submission
+                if current_user.is_authenticated:
+                    submission = Submission(
+                        user_id=current_user.id,
+                        challenge_id=challenge_id,
+                        code=user_code,
+                        passed=passed,
+                        feedback=str(feedback_text)
+                    )
+                    db.session.add(submission)
+                    db.session.commit(
                 if response_text.startswith("```"):
                      response_text = response_text[3:]
                 if response_text.endswith("```"):
@@ -147,14 +220,32 @@ Do not wrap the JSON in Markdown delimiters.
              feedback.append("AI Grading is not configured. Please set GOOGLE_API_KEY.")
     else:
         if request.method == 'POST':
-            print(f"Form validation failed: {form.errors}")
             
-    return render_template('challenge.html', 
-                           title=current_challenge['title'], 
-                           description=current_challenge['description'],
-                           form=form, 
-                           feedback=feedback, 
-                           passed=passed,
+            # Track login
+            user.last_login = datetime.now(timezone.utc)
+            user_session = UserSession(user_id=user.id, ip_address=request.remote_addr)
+            db.session.add(user_session)
+            db.session.commit()
+            
+            # Store session ID in Flask session to update on logout
+            session['current_db_session_id'] = user_session.id
+            
+            next_page = request.args.get('next')
+            return redirect(next_page) if next_page else redirect(url_for('home'))
+        else:
+            flash('Login Unsuccessful. Please check email and password', 'danger')
+    return render_template('login.html', title='Login', form=form)
+
+@app.route("/logout")
+def logout():
+    # Track logout time if we have a tracked session
+    session_id = session.get('current_db_session_id')
+    if session_id:
+        user_session = UserSession.query.get(session_id)
+        if user_session:
+            user_session.logout_time = datetime.now(timezone.utc)
+            db.session.commit()
+                          passed=passed,
                            challenge_id=challenge_id,
                            next_challenge_id=challenge_id + 1 if challenge_id < len(CHALLENGES) else None)
 
