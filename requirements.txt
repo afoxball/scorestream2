@@ -6,3 +6,5 @@ email_validator
 psycopg2-binary
 gunicorn
 google-genai
+Authlib
+requests

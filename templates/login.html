@@ -34,6 +34,9 @@
         </fieldset>
         <div class="form-group mt-3">
             {{ form.submit(class="btn btn-outline-info") }}
+            <a href="{{ url_for('google_login') }}" class="btn btn-danger ml-2">
+                Log In with Google
+            </a>
         </div>
         <div class="border-top pt-3">
             <small class="text-muted">

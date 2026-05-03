@@ -7,6 +7,7 @@ from flask import Flask, render_template, redirect, url_for, flash, request, ses
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from authlib.integrations.flask_client import OAuth
 from forms import RegistrationForm, LoginForm, CodingChallengeForm
 
 app = Flask(__name__)
@@ -31,14 +32,37 @@ db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
+# OAuth Configuration
+oauth = OAuth(app)
+google = oauth.register(
+    name='google',
+    client_id=os.environ.get('GOOGLE_CLIENT_ID'),
+    client_secret=os.environ.get('GOOGLE_CLIENT_SECRET'),
+    access_token_url='https://accounts.google.com/o/oauth2/token',
+    access_token_params=None,
+    authorize_url='https://accounts.google.com/o/oauth2/auth',
+    authorize_params=None,
+    api_base_url='https://www.googleapis.com/oauth2/v1/',
+    userinfo_endpoint='https://openidconnect.googleapis.com/v1/userinfo',
+    # This is only needed if using openId to fetch user info
+    client_kwargs={'scope': 'openid email profile'},
+)
+
 class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
+    first_name = db.Column(db.String(50), nullable=True)
+    last_name = db.Column(db.String(50), nullable=True)
+    age = db.Column(db.Integer, nullable=True)
     username = db.Column(db.String(20), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password = db.Column(db.String(255), nullable=False)
+    password = db.Column(db.String(255), nullable=True) # Changed to nullable for OAuth users
     role = db.Column(db.String(20), nullable=False, default='student')
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     last_login = db.Column(db.DateTime)
+    
+    # OAuth Provider info (simple storage)
+    oauth_provider = db.Column(db.String(50))
+    oauth_id = db.Column(db.String(100))
     
     # Relationships for tracking
     submissions = db.relationship('Submission', backref='author', lazy=True)
@@ -126,7 +150,14 @@ def register():
     if form.validate_on_submit():
         hashed_password = generate_password_hash(form.password.data, method='scrypt')
         # Default role is 'student' handled by database default
-        user = User(username=form.username.data, email=form.email.data, password=hashed_password)
+        user = User(
+            first_name=form.first_name.data,
+            last_name=form.last_name.data,
+            age=form.age.data,
+            username=form.username.data, 
+            email=form.email.data, 
+            password=hashed_password
+        )
         db.session.add(user)
         db.session.commit()
         flash('Your account has been created! You are now able to log in', 'success')
@@ -259,6 +290,62 @@ def login():
             db.session.commit()
             
             # Store session ID in Flask session to update on logout
+
+@app.route('/login/google')
+def google_login():
+    redirect_uri = url_for('google_authorize', _external=True)
+    return oauth.google.authorize_redirect(redirect_uri)
+
+@app.route('/login/google/callback')
+def google_authorize():
+    try:
+        token = oauth.google.authorize_access_token()
+        resp = oauth.google.get('https://www.googleapis.com/oauth2/v2/userinfo')
+        user_info = resp.json()
+        
+        email = user_info['email']
+        name = user_info.get('name', email.split('@')[0])
+        google_id = user_info['id']
+        
+        # Check if user exists
+        user = User.query.filter_by(email=email).first()
+        
+        if not user:
+            # Create new user
+            user = User(
+                username=name.replace(" ", "_")[:20], # Simple username generation
+                email=email,
+                role='student', # Default role
+                oauth_provider='google',
+                oauth_id=google_id
+            )
+            # No password needed for OAuth users
+            db.session.add(user)
+            db.session.commit()
+        else:
+            # OPTIONAL: Link existing account if not linked
+            if not user.oauth_id:
+                user.oauth_provider = 'google'
+                user.oauth_id = google_id
+                db.session.commit()
+
+        # Log User In
+        login_user(user)
+        
+        # Tracking logic (same as standard login)
+        user.last_login = datetime.now(timezone.utc)
+        user_session = UserSession(user_id=user.id, ip_address=request.remote_addr)
+        db.session.add(user_session)
+        db.session.commit()
+        session['current_db_session_id'] = user_session.id
+        
+        return redirect(url_for('home'))
+        
+    except Exception as e:
+        print(f"OAuth Error: {e}")
+        flash('Google Login Failed. Please try again.', 'danger')
+        return redirect(url_for('login'))
+
             session['current_db_session_id'] = user_session.id
             
             next_page = request.args.get('next')
@@ -318,6 +405,7 @@ def init_admin(username, email, password):
         return
     
     hashed_password = generate_password_hash(password, method='scrypt')
+    # oauth fields are optional/null for password users unless you default them
     user = User(username=username, email=email, password=hashed_password, role='superuser')
     db.session.add(user)
     db.session.commit()
